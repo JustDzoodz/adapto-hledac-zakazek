@@ -1,5 +1,5 @@
 import streamlit as st
-from playwright.sync_api import sync_playwright
+import requests
 from google import genai
 import datetime
 
@@ -28,28 +28,24 @@ if st.button("🚀 SPUSTIT KONTROLU WEBU", type="primary"):
     if not api_key:
         st.error("❌ Prosím, vložte váš Gemini API klíč, který jste si zkopíroval.")
     else:
-        with st.spinner("Robot právě otevírá prohlížeč a stahuje aktuální seznam zakázek..."):
+        with st.spinner("Robot právě bleskově stahuje aktuální seznam zakázek ze serveru SPÚČR..."):
             try:
-                text_z_webu = ""
+                st.text("🔗 Připojuji se na zakazky.spucr.cz...")
                 
-                with sync_playwright() as p:
-                    browser = p.chromium.launch(headless=True)
-                    page = browser.new_page()
-                    
-                    st.text("🔗 Připojuji se na zakazky.spucr.cz...")
-                    page.goto("https://zakazky.spucr.cz/contract_index.html", timeout=60000)
-                    page.wait_for_timeout(2000)
-                    
-                    text_z_webu = page.locator("body").inner_text()
-                    browser.close()
+                # Stáhneme celou stránku jako text (mnohem rychlejší a stabilnější než prohlížeč)
+                response = requests.get("https://zakazky.spucr.cz/contract_index.html", timeout=30)
+                response.encoding = 'utf-8' # Ošetření správné české diakritiky
+                html_kod = response.text
                 
-                st.success("✅ Web úspěšně stažen! Nyní posílám data do Gemini k analýze...")
+                st.success("✅ Data z webu úspěšně stažena! Nyní posílám data do Gemini k analýze...")
                 
+                # Inicializace Gemini
                 client = genai.Client(api_key=api_key)
                 dnesni_datum = datetime.date.today().strftime("%d.%m.%Y")
                 
+                # Instrukce pro Gemini - chceme navíc i klikatelné odkazy!
                 prompt = f"""
-                Jsi špičkový analytik veřejných zakázek. Tvým úkolem je projít text stažený z dotačního/zakázkového portálu.
+                Jsi špičkový analytik veřejných zakázek. Tvým úkolem je projít kód stažený ze zakázkového portálu.
                 Dnešní datum je: {dnesni_datum}.
                 
                 Zadání od uživatele:
@@ -58,7 +54,7 @@ if st.button("🚀 SPUSTIT KONTROLU WEBU", type="primary"):
                 
                 Formát výstupu:
                 Pokud najdeš odpovídající zakázky, vypiš je jako přehledný seznam. U každé uveď:
-                1. **Název zakázky**
+                1. **Název zakázky** (Vytvoř z názvu zakázky klikatelný odkaz! V HTML kódu vyhledej relativní odkaz k této zakázce, bývá ve tvaru 'contract_X.html'. Spoj ho se základní adresou, aby vznikl funkční odkaz ve tvaru: https://zakazky.spucr.cz/contract_X.html)
                 2. **Datum zahájení**
                 3. **Lhůta pro nabídky**
                 4. **Stručný důvod**, proč zakázka odpovídá klíčovým slovům.
@@ -66,18 +62,18 @@ if st.button("🚀 SPUSTIT KONTROLU WEBU", type="primary"):
                 Pokud žádná zakázka neodpovídá klíčovým slovům nebo jsou všechny příliš staré, napiš přesně text:
                 "Nebyly nalezeny žádné nové zakázky odpovídající vašim kritériím."
                 
-                Zde je surový text z webu:
-                {text_z_webu}
+                Zde je surový kód z webu:
+                {html_kod}
                 """
                 
                 with st.spinner("Gemini nyní čte texty a filtruje výsledky..."):
-                    response = client.models.generate_content(
+                    res = client.models.generate_content(
                         model='gemini-3.5-flash',
                         contents=prompt
                     )
                 
                 st.markdown("## 📋 Výsledky vyhledávání")
-                st.markdown(response.text)
+                st.markdown(res.text)
                 
             except Exception as e:
                 st.error(f"Došlo k chybě při běhu robota: {e}")
