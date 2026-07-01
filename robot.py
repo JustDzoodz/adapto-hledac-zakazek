@@ -7,9 +7,9 @@ import datetime
 st.set_page_config(page_title="Monitorovací systém ADAPTO.space", page_icon="💼", layout="wide")
 
 st.title("💼 Monitorovací systém zakázek pro ADAPTO.space")
-st.caption("Automatizovaná aplikace pro screening firemních příležitostí. Integrace AI do vnitřních procesů.")
+st.caption("Webová aplikace s integrovaným AI pro screening vybraných portálů a příležitostí.")
 
-# --- DATABÁZE VŠECH 41 DODANÝCH PORTÁLŮ PODLE KATEGORIÍ ---
+# --- DATABÁZE VŠECH 41 PORTÁLŮ PODLE KATEGORIÍ ---
 PORTALY = {
     "🍃 Životní prostředí, Lesy a Národní parky": {
         "AOPK ČR (NEN)": "https://nen.nipez.cz/profily-zadavatelu-platne/p:pzp:query=agentura/detail-profilu/AOPK/zahajene-zakazky",
@@ -27,7 +27,7 @@ PORTALY = {
         "Středočeský kraj (NEN)": "https://nen.nipez.cz/profily-zadavatelu-platne/detail-profilu/stredoceskykraj/zahajene-zakazky",
         "Středočeský kraj (E-ZAK)": "https://zakazky.kr-stredocesky.cz/profile_display_2.html",
         "Centrální nákup Plzeňského kraje (E-ZAK)": "https://ezak.cnpk.cz/profile_display_140.html",
-        "Pardubický kraj (E-ZAK)": "https://zakazky.pardubickykraj.cz/profile_display_2.html",
+        "Pardubický kraj (E-ZAK)": "https://zakazky.pardubickraj.cz/profile_display_2.html",
         "Kraj Vysočina (E-ZAK)": "https://ezak.kr-vysocina.cz/profile_display_111.html",
         "Kraj Vysočina (NEN)": "https://nen.nipez.cz/profily-zadavatelu-platne/detail-profilu/krajvysocina/zahajene-zakazky",
         "Kraj bez korupce (E-ZAK)": "https://zakazky.krajbezkorupce.cz/profile_display_2.html"
@@ -62,6 +62,12 @@ PORTALY = {
     }
 }
 
+# --- FUNKCE PRO CHYTRÉ PŘEPÍNÁNÍ VŠECH CHECKBOXŮ NARÁZ ---
+def přepnout_celou_skupinu(kat_name):
+    hlavni_stav = st.session_state[f"master_{kat_name}"]
+    for jmeno in PORTALY[kat_name].keys():
+        st.session_state[f"cb_{kat_name}_{jmeno}"] = hlavni_stav
+
 st.markdown("##") 
 
 # 2. Ovládací panel parametrů
@@ -71,7 +77,6 @@ with st.container(border=True):
     col1, col2 = st.columns([3, 1])
     
     with col1:
-        # Vaše expertní ekologická klíčová slova natvrdo nastavená
         vychozi_slova = (
             "tůň, tůně, mokřad, mokřady, rybník, obnova rybníka, odbahnění rybníka, "
             "vodní tok, koryto, revitalizace toku, nádrž, retenční nádrž, VN, MVN, poldr, "
@@ -80,17 +85,10 @@ with st.container(border=True):
             "meliorace, úprava meliorací, sucho, adaptace na sucho, eroze, protierozní, "
             "retenční, retenční nádrž, tok, ř. km"
         )
-        
-        klicova_slova = st.text_input(
-            "Sledovaná klíčová slova (oddělujte čárkou):", 
-            value=vychozi_slova
-        )
+        klicova_slova = st.text_input("Sledovaná klíčová slova (oddělujte čárkou):", value=vychozi_slova)
         
     with col2:
-        dny_zprah = st.number_input(
-            "Stáří zakázek (maximálně dní):", 
-            min_value=1, max_value=60, value=7
-        )
+        dny_zprah = st.number_input("Stáří zakázek (maximálně dní):", min_value=1, max_value=60, value=7)
 
 # 3. Výběr portálů ke screeningu
 st.subheader("🌐 Výběr cílových portálů ke kontrole")
@@ -98,24 +96,29 @@ st.caption("Rozbalte kategorii a vyberte buď celou skupinu, nebo jednotlivé we
 
 vybrane_portaly = {}
 
-# Generování rozbalovacích skupin pro elegantní design
+# Generování rozbalovacích skupin s opravenou logikou state managementu
 for kategorie, weby in PORTALY.items():
     with st.expander(kategorie, expanded=(kategorie.startswith("🍃"))):
-        # Hromadný přepínač pro celou skupinu
-        vybrat_vse = st.checkbox(f"Vybrat celou skupinu: {kategorie}", value=False, key=f"all_{kategorie}")
         
-        # Rozdělení webů do dvou sloupců uvnitř expanderu, ať to vypadá moderně
+        st.checkbox(
+            f"Vybrat celou skupinu: {kategorie}", 
+            value=False, 
+            key=f"master_{kategorie}", 
+            on_change=přepnout_celou_skupinu, 
+            args=(kategorie,)
+        )
+        
         sub_col1, sub_col2 = st.columns(2)
         items = list(weby.items())
         half = (len(items) + 1) // 2
         
         with sub_col1:
             for jmeno, url in items[:half]:
-                if st.checkbox(jmeno, value=vybrat_vse, key=url):
+                if st.checkbox(jmeno, key=f"cb_{kategorie}_{jmeno}"):
                     vybrane_portaly[jmeno] = url
         with sub_col2:
             for jmeno, url in items[half:]:
-                if st.checkbox(jmeno, value=vybrat_vse, key=url):
+                if st.checkbox(jmeno, key=f"cb_{kategorie}_{jmeno}"):
                     vybrane_portaly[jmeno] = url
 
 # Načtení skrytého klíče
@@ -135,14 +138,14 @@ if pocet_vybranych > 0:
         st.warning("⚠️ Vybrali jste více než 15 webů naráz. Kvůli rychlostním limitům bezplatné verze Gemini doporučujeme weby kontrolovat raději po menších skupinách (např. do 12 webů na jedno kliknutí), aby nedošlo k odmítnutí ze strany serverů Google.")
 
 # 4. Spuštění analýzy
-if st.button("🚀 SPUSTIT KOMPLETNÍ SCREENING", type="primary", disabled=(pocet_vybranych == 0)):
+button_disabled = (pocet_vybranych == 0)
+if st.button("🚀 SPUSTIT KOMPLETNÍ SCREENING", type="primary", disabled=button_disabled):
     if not api_key:
         st.error("❌ Nelze spustit vyhledávání bez API klíče v Secrets.")
     else:
         st.markdown("---")
         st.subheader("📊 Výsledky monitoringu")
         
-        # Vytvoření dynamických záložek podle toho, které weby uživatel reálně zaškrtnul
         tabs = st.tabs(list(vybrane_portaly.keys()))
         
         for i, (nazev_webu, odkaz_webu) in enumerate(vybrane_portaly.items()):
@@ -157,7 +160,6 @@ if st.button("🚀 SPUSTIT KOMPLETNÍ SCREENING", type="primary", disabled=(poce
                     status_text.text("⬇️ Navazuji spojení a stahuji data ze serveru...")
                     progress_bar.progress(30)
                     
-                    # Hlavička, aby nás servery hned neodmítly jako roboty
                     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
                     response = requests.get(odkaz_webu, headers=headers, timeout=25)
                     response.encoding = 'utf-8'
@@ -190,7 +192,7 @@ if st.button("🚀 SPUSTIT KOMPLETNÍ SCREENING", type="primary", disabled=(poce
                     "Nebyly nalezeny žádné nové zakázky odpovídající vašim kritériím."
                     
                     Zde jsou surová data z portálu:
-                    {html_kod[:60000]}  # Ochrana před příliš obřími stránkami, které by přetížily paměť
+                    {html_kod[:60000]}
                     """
                     
                     res = client.models.generate_content(model='gemini-3.5-flash', contents=prompt)
