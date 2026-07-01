@@ -3,77 +3,131 @@ import requests
 from google import genai
 import datetime
 
-# 1. Nastavení vzhledu stránky
-st.set_page_config(page_title="Hledač zakázek SPÚČR", page_icon="🔎", layout="wide")
+# 1. Moderní nastavení vzhledu stránky
+st.set_page_config(page_title="Zakázkový Dashboard AI", page_icon="💼", layout="wide")
 
-st.title("🔎 Vyhledávač nových zakázek na SPÚČR")
-st.write("Tento nástroj projde web zakazky.spucr.cz a pomocí AI vyfiltruje nejnovější výzvy podle vašich klíčových slov.")
+# Vlastní CSS pro modernější vzezření (stíny, zaoblené rohy, hezčí písmo)
+st.markdown("""
+    <style>
+    .main { background-color: #f8f9fa; }
+    div[data-testid="stVerticalBlock"] > div:has(div.stMarkdown) {
+        background-color: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        margin-bottom: 15px;
+    }
+    .stButton>button {
+        width: 100%;
+        border-radius: 8px;
+        font-weight: bold;
+        height: 3em;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# 2. Formulář pro uživatele (Kolegu)
-col1, col2 = st.columns(2)
+# Hlavička aplikace
+st.title("💼 Inteligentní monitorovací systém zakázek")
+st.caption("AI vyhledávač napojený na Gemini 3.5 Flash • Automatický screening firemních příležitostí")
+
+# --- NASTAVENÍ WEBOVÝCH STRÁNEK ---
+# Sem budeme přidávat další weby. Formát je: "Název": "Odkaz"
+WEBOVE_PORTALY = {
+    "Ministerstvo pro místní rozvoj (SPÚČR)": "https://zakazky.spucr.cz/contract_index.html",
+    "Ukázkový druhý web (Doplníme)": "https://zakazky.spucr.cz/contract_index.html" # Dočasně stejný pro test
+}
+
+# 2. Ovládací panel (Karty s nastavením)
+st.subheader("🎛️ Parametry vyhledávání")
+
+col1, col2 = st.columns([2, 1])
 
 with col1:
+    # Tady jsou tvá nová výchozí klíčová slova (změň podle potřeby)
     klicova_slova = st.text_input(
-        "Zadejte klíčová slova (oddělená čárkou):", 
-        value="pozemky, stavba, IT, monitoring, projektová činnost"
+        "Sledovaná klíčová slova (oddělujte čárkou):", 
+        value="projektová činnost, inženýrské sítě, realizace staveb, geodetické práce"
     )
 
 with col2:
-    dny_zprah = st.number_input("Kontrolovat zakázky maximálně kolik dní staré?", min_value=1, max_value=30, value=3)
+    dny_zprah = st.number_input(
+        "Stáří zakázek (maximálně dní):", 
+        min_value=1, max_value=60, value=7
+    )
 
-api_key = st.text_input("Vložte váš Gemini API klíč:", type="password", value="")
+# Automatické načtení skrytého API klíče
+if "GEMINI_API_KEY" in st.secrets:
+    api_key = st.secrets["GEMINI_API_KEY"]
+else:
+    st.error("🔑 V nastavení Streamlit Cloud chybí GEMINI_API_KEY!")
+    st.stop()
 
-# 3. Spuštění bota po kliknutí na tlačítko
-if st.button("🚀 SPUSTIT KONTROLU WEBU", type="primary"):
-    if not api_key:
-        st.error("❌ Prosím, vložte váš Gemini API klíč, který jste si zkopíroval.")
-    else:
-        with st.spinner("Robot právě bleskově stahuje aktuální seznam zakázek ze serveru SPÚČR..."):
+# 3. Spuštění analýzy
+if st.button("🚀 SPUSTIT KOMPLETNÍ SCREENING", type="primary"):
+    
+    st.markdown("---")
+    st.subheader("📊 Stav zpracování a výsledky")
+    
+    # Vytvoříme záložky pro jednotlivé weby pro moderní vzhled
+    tabs = st.tabs(list(WEBOVE_PORTALY.keys()))
+    
+    # Projedeme všechny weby jeden po druhém
+    for i, (nazev_webu, odkaz_webu) in enumerate(WEBOVE_PORTALY.items()):
+        with tabs[i]:
+            st.markdown(f"### 🌐 Analýza portálu: `{nazev_webu}`")
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
             try:
-                st.text("🔗 Připojuji se na zakazky.spucr.cz...")
+                status_text.text("⬇️ Stahuji data z webového serveru...")
+                progress_bar.progress(30)
                 
-                # Stáhneme celou stránku jako text (mnohem rychlejší a stabilnější než prohlížeč)
-                response = requests.get("https://zakazky.spucr.cz/contract_index.html", timeout=30)
-                response.encoding = 'utf-8' # Ošetření správné české diakritiky
+                response = requests.get(odkaz_webu, timeout=30)
+                response.encoding = 'utf-8'
                 html_kod = response.text
                 
-                st.success("✅ Data z webu úspěšně stažena! Nyní posílám data do Gemini k analýze...")
+                progress_bar.progress(60)
+                status_text.text("🧠 Posílám texty k AI analýze do Gemini...")
                 
-                # Inicializace Gemini
+                # Inicializace a dotaz na Gemini
                 client = genai.Client(api_key=api_key)
                 dnesni_datum = datetime.date.today().strftime("%d.%m.%Y")
                 
-                # Instrukce pro Gemini - chceme navíc i klikatelné odkazy!
                 prompt = f"""
-                Jsi špičkový analytik veřejných zakázek. Tvým úkolem je projít kód stažený ze zakázkového portálu.
+                Jsi špičkový analytik veřejných zakázek. Tvým úkolem je projít HTML kód portálu: {nazev_webu}
                 Dnešní datum je: {dnesni_datum}.
                 
-                Zadání od uživatele:
-                - Hledáme pouze zakázky, které odpovídají (i významově) těmto klíčovým slovům: {klicova_slova}
-                - Zajímavé jsou pro nás pouze NOVÉ zakázky, které mají 'Datum zahájení' maximálně {dny_zprah} dní zpětně od dnešního data ({dnesni_datum}).
+                Kritéria vyhledávání:
+                - Hledáme pouze zakázky odpovídající těmto výrazům: {klicova_slova}
+                - Pouze NOVÉ zakázky (Datum zahájení max {dny_zprah} dní zpětně od {dnesni_datum}).
                 
-                Formát výstupu:
-                Pokud najdeš odpovídající zakázky, vypiš je jako přehledný seznam. U každé uveď:
-                1. **Název zakázky** (Vytvoř z názvu zakázky klikatelný odkaz! V HTML kódu vyhledej relativní odkaz k této zakázce, bývá ve tvaru 'contract_X.html'. Spoj ho se základní adresou, aby vznikl funkční odkaz ve tvaru: https://zakazky.spucr.cz/contract_X.html)
+                Formát výstupu (Použij čistý a přehledný Markdown):
+                Pokud najdeš zakázky, vypiš je jako seznam. U každé uveď:
+                1. **Název zakázky** (Pokud je v HTML relativní odkaz jako 'contract_X.html', udělej z názvu klikatelný odkaz složením s hlavní doménou webu)
                 2. **Datum zahájení**
                 3. **Lhůta pro nabídky**
-                4. **Stručný důvod**, proč zakázka odpovídá klíčovým slovům.
+                4. **Proč odpovídá**: (stručné zdůvodnění)
                 
-                Pokud žádná zakázka neodpovídá klíčovým slovům nebo jsou všechny příliš staré, napiš přesně text:
-                "Nebyly nalezeny žádné nové zakázky odpovídající vašim kritériím."
+                Pokud nic neodpovídá, napiš přesně: "Nebyly nalezeny žádné nové zakázky odpovídající vašim kritériím."
                 
-                Zde je surový kód z webu:
+                Zde je zdrojový kód:
                 {html_kod}
                 """
                 
-                with st.spinner("Gemini nyní čte texty a filtruje výsledky..."):
-                    res = client.models.generate_content(
-                        model='gemini-3.5-flash',
-                        contents=prompt
-                    )
+                res = client.models.generate_content(model='gemini-3.5-flash', contents=prompt)
                 
-                st.markdown("## 📋 Výsledky vyhledávání")
-                st.markdown(res.text)
+                progress_bar.progress(100)
+                status_text.empty()
                 
+                # Zobrazení výsledků v moderním boxu
+                if "Nebyly nalezeny žádné" in res.text:
+                    st.info(res.text)
+                else:
+                    st.success(f"🎉 Na portálu {nazev_webu} nalezeny shody!")
+                    st.markdown(res.text)
+                    
             except Exception as e:
-                st.error(f"Došlo k chybě při běhu robota: {e}")
+                progress_bar.empty()
+                status_text.empty()
+                st.error(f"❌ Nepodařilo se zpracovat tento web: {e}")
